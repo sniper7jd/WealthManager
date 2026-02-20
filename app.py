@@ -4,148 +4,165 @@ import yfinance as yf
 import os
 from datetime import date
 
-st.set_page_config(page_title="Wealth App", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Wealth Command", layout="wide")
 
-# --- 1. Database Setup ---
+# --- 1. Database Engine ---
 FILES = {"accounts": "accounts.csv", "txs": "transactions.csv", "portfolio": "portfolio.csv"}
 
-def load_df(key, cols):
+def load_data(key, cols):
     if os.path.exists(FILES[key]): return pd.read_csv(FILES[key])
     return pd.DataFrame(columns=cols)
 
-def save_df(key):
+def save_data(key):
     st.session_state[key].to_csv(FILES[key], index=False)
 
 if "accounts" not in st.session_state:
-    st.session_state.accounts = load_df("accounts", ["Account Name", "Type"])
-    st.session_state.txs = load_df("txs", ["Date", "Account Name", "Type", "Amount", "Description"])
-    st.session_state.portfolio = load_df("portfolio", ["Brokerage", "Ticker", "Shares", "Avg Cost"])
+    st.session_state.accounts = load_data("accounts", ["Account Name", "Type"])
+    st.session_state.txs = load_data("txs", ["Date", "Account Name", "Type", "Amount", "Description"])
+    st.session_state.portfolio = load_data("portfolio", ["Ticker", "Shares", "Avg Cost"])
 
-# --- 2. Sidebar: Rare Actions (Setup & Settings) ---
-with st.sidebar:
-    st.header("⚙️ App Settings")
-    st.markdown("Create new accounts or add stock holdings here.")
-    
-    with st.expander("🏦 Add Bank or Credit Card"):
-        with st.form("new_account_form", clear_on_submit=True):
-            new_acc_name = st.text_input("Account Name (e.g., Chase Checking)")
-            new_acc_type = st.selectbox("Account Type", ["Bank Account", "Credit Card"])
-            if st.form_submit_button("Create Account") and new_acc_name:
-                if new_acc_name not in st.session_state.accounts["Account Name"].values:
-                    new_row = pd.DataFrame([{"Account Name": new_acc_name, "Type": new_acc_type}])
-                    st.session_state.accounts = pd.concat([st.session_state.accounts, new_row], ignore_index=True)
-                    save_df("accounts")
-                    st.success(f"{new_acc_name} created!")
-                    st.rerun()
+# --- 2. Core Calculations ---
+txs = st.session_state.txs
+accounts = st.session_state.accounts
+port = st.session_state.portfolio
 
-    with st.expander("📈 Add Stock Position"):
-        with st.form("new_stock_form", clear_on_submit=True):
-            brokerage = st.selectbox("Brokerage", ["Robinhood", "Fidelity", "Other"])
-            ticker = st.text_input("Ticker Symbol").upper()
-            shares = st.number_input("Shares", min_value=0.0, step=1.0)
-            cost = st.number_input("Avg Cost ($)", min_value=0.0, step=0.01)
-            if st.form_submit_button("Add Holding") and ticker:
-                new_row = pd.DataFrame([{"Brokerage": brokerage, "Ticker": ticker, "Shares": shares, "Avg Cost": cost}])
-                st.session_state.portfolio = pd.concat([st.session_state.portfolio, new_row], ignore_index=True)
-                save_df("portfolio")
-                st.success(f"{ticker} added!")
-                st.rerun()
-
-# --- 3. Dashboard Data Processing ---
-# Calculate Cash
-bank_txs = st.session_state.txs[st.session_state.txs["Account Name"].isin(st.session_state.accounts[st.session_state.accounts["Type"] == "Bank Account"]["Account Name"])]
+# Bank Cash (Deposits - Withdrawals)
+bank_names = accounts[accounts["Type"] == "Bank Account"]["Account Name"].tolist()
+bank_txs = txs[txs["Account Name"].isin(bank_names)]
 total_cash = bank_txs[bank_txs["Type"] == "Deposit"].Amount.astype(float).sum() - bank_txs[bank_txs["Type"] == "Withdrawal"].Amount.astype(float).sum()
 
-# Calculate Debt
-credit_txs = st.session_state.txs[st.session_state.txs["Account Name"].isin(st.session_state.accounts[st.session_state.accounts["Type"] == "Credit Card"]["Account Name"])]
+# Credit Debt (Debits - Credits)
+credit_names = accounts[accounts["Type"] == "Credit Card"]["Account Name"].tolist()
+credit_txs = txs[txs["Account Name"].isin(credit_names)]
 total_debt = credit_txs[credit_txs["Type"] == "Debit"].Amount.astype(float).sum() - credit_txs[credit_txs["Type"] == "Credit"].Amount.astype(float).sum()
 
-# Calculate Live Portfolio
+# Portfolio Value
 total_invested = 0.0
-port_df = st.session_state.portfolio.copy()
-if not port_df.empty:
-    tickers = port_df["Ticker"].unique().tolist()
+live_prices = {}
+if not port.empty:
+    tickers = port["Ticker"].unique().tolist()
     try:
         live_data = yf.download(tickers, period="1d", progress=False)['Close']
-        live_prices = []
-        for t in port_df["Ticker"]:
+        for t in tickers:
             price = float(live_data.iloc[-1]) if len(tickers) == 1 else float(live_data[t].iloc[-1])
-            live_prices.append(price)
-            total_invested += price * float(port_df.loc[port_df["Ticker"] == t, "Shares"].values[0])
-        port_df["Live Price"] = live_prices
-        port_df["Total Value"] = port_df["Shares"].astype(float) * port_df["Live Price"]
+            live_prices[t] = price
+            total_invested += price * float(port.loc[port["Ticker"] == t, "Shares"].values[0])
     except Exception:
-        port_df["Total Value"] = port_df["Shares"].astype(float) * port_df["Avg Cost"].astype(float)
-        total_invested = port_df["Total Value"].sum()
+        total_invested = (port["Shares"].astype(float) * port["Avg Cost"].astype(float)).sum()
 
 net_worth = total_cash - total_debt + total_invested
 
-# --- 4. Main UI: The Command Center ---
-st.title("📊 Wealth Command Center")
-
-# Top Level Metrics
+# --- 3. Persistent Top Header ---
+st.title("💠 Wealth Command Center")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Net Worth", f"${net_worth:,.2f}")
-c2.metric("Cash Balance", f"${total_cash:,.2f}")
-c3.metric("Credit Card Debt", f"${total_debt:,.2f}", delta="Debt", delta_color="inverse")
-c4.metric("Market Portfolio", f"${total_invested:,.2f}")
-
+c2.metric("Total Cash", f"${total_cash:,.2f}")
+c3.metric("Credit Debt", f"${total_debt:,.2f}", delta="Liabilities", delta_color="inverse")
+c4.metric("Market Assets", f"${total_invested:,.2f}")
 st.markdown("___")
 
-# Visual Breakdown Chart
-st.subheader("Asset Breakdown")
-chart_data = pd.DataFrame({"Category": ["Cash", "Investments", "Credit Debt"], "Balance": [total_cash, total_invested, -total_debt]}).set_index("Category")
-st.bar_chart(chart_data, height=200)
+# --- 4. Interactive Application Tabs ---
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🏦 Banking & Ledgers", "📈 Portfolio & Insights"])
 
-st.markdown("___")
-
-# --- 5. Dynamic Account Cards ---
-st.subheader("Your Accounts")
-
-# Render Bank Accounts
-bank_accounts = st.session_state.accounts[st.session_state.accounts["Type"] == "Bank Account"]["Account Name"].tolist()
-for acc in bank_accounts:
-    acc_data = st.session_state.txs[st.session_state.txs["Account Name"] == acc]
-    bal = acc_data[acc_data["Type"] == "Deposit"].Amount.astype(float).sum() - acc_data[acc_data["Type"] == "Withdrawal"].Amount.astype(float).sum()
-    
-    with st.expander(f"🏦 {acc} | Balance: **${bal:,.2f}**"):
-        with st.form(f"form_{acc}", clear_on_submit=True):
-            col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
-            tx_date = col1.date_input("Date", value=date.today(), key=f"d_{acc}")
-            tx_type = col2.selectbox("Type", ["Deposit", "Withdrawal"], key=f"t_{acc}")
-            amt = col3.number_input("Amount", min_value=0.0, step=0.01, key=f"a_{acc}")
-            desc = col4.text_input("Description", key=f"desc_{acc}")
-            if st.form_submit_button("Log Transaction") and amt > 0:
-                new_tx = pd.DataFrame([{"Date": tx_date, "Account Name": acc, "Type": tx_type, "Amount": amt, "Description": desc}])
-                st.session_state.txs = pd.concat([st.session_state.txs, new_tx], ignore_index=True)
-                save_df("txs")
-                st.rerun()
-        if not acc_data.empty: st.dataframe(acc_data.tail(5), hide_index=True, use_container_width=True)
-
-# Render Credit Cards
-credit_accounts = st.session_state.accounts[st.session_state.accounts["Type"] == "Credit Card"]["Account Name"].tolist()
-for acc in credit_accounts:
-    acc_data = st.session_state.txs[st.session_state.txs["Account Name"] == acc]
-    bal = acc_data[acc_data["Type"] == "Debit"].Amount.astype(float).sum() - acc_data[acc_data["Type"] == "Credit"].Amount.astype(float).sum()
-    
-    with st.expander(f"💳 {acc} | Outstanding: **${bal:,.2f}**"):
-        with st.form(f"form_{acc}", clear_on_submit=True):
-            col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
-            tx_date = col1.date_input("Date", value=date.today(), key=f"d_{acc}")
-            tx_type = col2.selectbox("Type", ["Debit", "Credit"], key=f"t_{acc}")
-            amt = col3.number_input("Amount", min_value=0.0, step=0.01, key=f"a_{acc}")
-            desc = col4.text_input("Description", key=f"desc_{acc}")
-            if st.form_submit_button("Log Transaction") and amt > 0:
-                new_tx = pd.DataFrame([{"Date": tx_date, "Account Name": acc, "Type": tx_type, "Amount": amt, "Description": desc}])
-                st.session_state.txs = pd.concat([st.session_state.txs, new_tx], ignore_index=True)
-                save_df("txs")
-                st.rerun()
-        if not acc_data.empty: st.dataframe(acc_data.tail(5), hide_index=True, use_container_width=True)
-
-# Render Portfolio
-with st.expander(f"📈 Investment Portfolio | Value: **${total_invested:,.2f}**"):
-    if not port_df.empty:
-        st.dataframe(port_df, hide_index=True, use_container_width=True, 
-                     column_config={"Total Value": st.column_config.NumberColumn(format="$%.2f")})
+# --- TAB 1: DASHBOARD ---
+with tab1:
+    st.subheader("Asset Allocation")
+    if net_worth != 0 or total_debt != 0:
+        chart_data = pd.DataFrame({
+            "Category": ["Cash", "Investments", "Credit Debt"], 
+            "Balance": [total_cash, total_invested, -total_debt]
+        }).set_index("Category")
+        st.bar_chart(chart_data, height=300)
     else:
-        st.info("No holdings yet. Add stocks via the sidebar.")
+        st.info("Log transactions or add stock positions to generate your dashboard.")
+
+# --- TAB 2: BANKING & LEDGERS ---
+with tab2:
+    col_acc, col_tx = st.columns([1, 2])
+    
+    with col_acc:
+        st.subheader("1. Manage Accounts")
+        st.write("Add, rename, or delete accounts here.")
+        edited_accs = st.data_editor(
+            st.session_state.accounts, 
+            num_rows="dynamic", 
+            key="acc_editor",
+            column_config={"Type": st.column_config.SelectboxColumn(options=["Bank Account", "Credit Card"], required=True)}
+        )
+        if st.button("Save Account Changes"):
+            st.session_state.accounts = edited_accs
+            save_data("accounts")
+            st.success("Accounts updated!")
+            st.rerun()
+
+    with col_tx:
+        st.subheader("2. Master Ledger")
+        st.write("Double-click to edit typos, or select a row and press Delete to remove a transaction.")
+        
+        # Dynamic dropdown for the ledger editor based on current accounts
+        valid_accounts = st.session_state.accounts["Account Name"].tolist()
+        
+        edited_txs = st.data_editor(
+            st.session_state.txs,
+            num_rows="dynamic",
+            key="tx_editor",
+            column_config={
+                "Account Name": st.column_config.SelectboxColumn(options=valid_accounts, required=True),
+                "Type": st.column_config.SelectboxColumn(options=["Deposit", "Withdrawal", "Debit", "Credit"], required=True),
+                "Amount": st.column_config.NumberColumn(min_value=0.0, format="$%.2f", required=True)
+            }
+        )
+        if st.button("Save Ledger Edits"):
+            st.session_state.txs = edited_txs
+            save_data("txs")
+            st.success("Ledger updated!")
+            st.rerun()
+
+# --- TAB 3: PORTFOLIO & INSIGHTS ---
+with tab3:
+    st.subheader("Equity Holdings")
+    st.write("Add new tickers, update your average costs, or sell out of positions.")
+    
+    edited_port = st.data_editor(
+        st.session_state.portfolio,
+        num_rows="dynamic",
+        key="port_editor",
+        column_config={
+            "Ticker": st.column_config.TextColumn(required=True),
+            "Shares": st.column_config.NumberColumn(min_value=0.0, step=1.0, required=True),
+            "Avg Cost": st.column_config.NumberColumn(min_value=0.0, format="$%.2f", required=True)
+        },
+        use_container_width=True
+    )
+    if st.button("Save Portfolio Changes"):
+        st.session_state.portfolio = edited_port
+        save_data("portfolio")
+        st.success("Portfolio updated!")
+        st.rerun()
+        
+    st.markdown("___")
+    st.subheader("Live Market Insights")
+    
+    if not st.session_state.portfolio.empty:
+        # Create a dropdown to select a stock from your portfolio to analyze
+        insight_ticker = st.selectbox("Select a holding to view historical performance:", st.session_state.portfolio["Ticker"].unique())
+        
+        if insight_ticker:
+            try:
+                # Fetch 6 months of historical data
+                hist_data = yf.Ticker(insight_ticker).history(period="6mo")
+                if not hist_data.empty:
+                    st.line_chart(hist_data['Close'], height=250)
+                    
+                    # Display quick stats underneath the graph
+                    c_price = live_prices.get(insight_ticker, 0)
+                    avg_cost = st.session_state.portfolio[st.session_state.portfolio["Ticker"] == insight_ticker]["Avg Cost"].values[0]
+                    shares = st.session_state.portfolio[st.session_state.portfolio["Ticker"] == insight_ticker]["Shares"].values[0]
+                    
+                    p_l = (c_price - avg_cost) * shares
+                    
+                    st.write(f"**Current Price:** ${c_price:,.2f} | **Your Avg Cost:** ${avg_cost:,.2f} | **Total P/L:** ${p_l:,.2f}")
+            except Exception as e:
+                st.warning(f"Could not load graph for {insight_ticker}: {e}")
+    else:
+        st.info("Add a stock above to unlock live market insights.")
