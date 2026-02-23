@@ -16,7 +16,8 @@
             <button @click="open = !open" @click.away="open = false" class="text-gray-500 hover:text-gray-900 font-medium">⚙️ Settings</button>
             <div x-show="open" class="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-lg z-50">
                 <button @click="addAccountModal = true; open = false" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-t-xl">➕ Add Account</button>
-                <a href="/portfolio" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-b-xl">📈 Manage Portfolio</a>
+                <a href="/portfolio" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600">📈 Manage Portfolio</a>
+                <a href="/emulator" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-b-xl">📊 Portfolio Emulator</a>
             </div>
         </div>
     </nav>
@@ -40,10 +41,22 @@
 
     <div class="max-w-6xl mx-auto mt-8 px-4 pb-12">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><p class="text-sm font-medium text-gray-500">Net Worth</p><h2 class="text-3xl font-bold">${{ net_worth }}</h2></div>
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><p class="text-sm font-medium text-gray-500">Liquid Cash</p><h2 class="text-3xl font-bold">${{ total_cash }}</h2></div>
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><p class="text-sm font-medium text-gray-500">Credit Debt</p><h2 class="text-3xl font-bold text-red-600">-${{ total_debt }}</h2></div>
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><p class="text-sm font-medium text-gray-500">Market Portfolio</p><h2 class="text-3xl font-bold text-green-600">${{ total_invested }}</h2></div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <p class="text-sm font-medium text-gray-500">Net Worth</p>
+                <h2 class="text-3xl font-bold {% if net_worth_val == 0 %}text-gray-700{% elif net_worth_val > 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ net_worth }}</h2>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <p class="text-sm font-medium text-gray-500">Liquid Cash</p>
+                <h2 class="text-3xl font-bold {% if total_cash_val == 0 %}text-gray-700{% elif total_cash_val > 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ total_cash }}</h2>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <p class="text-sm font-medium text-gray-500">Credit Debt</p>
+                <h2 class="text-3xl font-bold {% if total_debt_val == 0 %}text-gray-700{% elif total_debt_val < 0 %}text-green-600{% else %}text-red-600{% endif %}">-${{ total_debt }}</h2>
+            </div>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <p class="text-sm font-medium text-gray-500">Market Portfolio</p>
+                <h2 class="text-3xl font-bold {% if total_invested_val == 0 %}text-gray-700{% elif total_invested_val > 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ total_invested }}</h2>
+            </div>
         </div>
 
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-10">
@@ -70,6 +83,13 @@
                     <span class="text-sm font-medium text-gray-500">Equities</span>
                 </div>
                 <h4 class="text-lg font-bold text-gray-900">Investment Portfolio</h4>
+            </a>
+            <a href="/emulator" class="block bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-emerald-200 transition-all">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">📊</div>
+                    <span class="text-sm font-medium text-gray-500">Emulator</span>
+                </div>
+                <h4 class="text-lg font-bold text-gray-900">Portfolio Emulator</h4>
             </a>
         </div>
     </div>
