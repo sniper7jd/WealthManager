@@ -14,7 +14,7 @@ A personal wealth tracking app built with FastAPI. Track bank accounts, credit c
 ```bash
 python -m venv venv
 source venv/bin/activate   # On Windows: venv\Scripts\activate
-pip install fastapi uvicorn yfinance jinja2
+pip install -r requirements.txt
 ```
 
 ## Run
@@ -28,3 +28,15 @@ Open http://127.0.0.1:8000
 ## Tech
 
 - FastAPI, Jinja2, SQLite, Yahoo Finance (yfinance)
+
+## Compatibility Notes
+
+- Dependencies are pinned to compatible version ranges in `requirements.txt` to avoid FastAPI/Starlette breakages across machines.
+- If you already have an older environment, recreate it:
+
+```bash
+rm -rf venv
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
